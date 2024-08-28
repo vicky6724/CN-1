@@ -495,3 +495,84 @@ scanf("%s",choice);
 msgctl(msgid, IPC_RMID, NULL);
 return 0;
 }
+#include <stdio.h>
+
+struct process {
+    int at;      // Arrival Time
+    int st;      // Service Time (Burst Time)
+    int cpu;     // CPU assigned
+    int status;  // Status of the process (0 for not completed, 1 for completed)
+    int ft;      // Finish Time
+} ready_list[10];
+
+int n;
+
+// Dispatcher function to find the next process to execute
+int dispatcher(int time) {
+    int i, index = -1;
+    for (i = 0; i < n; i++) {
+        if (ready_list[i].status != 1 && ready_list[i].at <= time) {
+            index = i;
+            return index;
+        }
+    }
+    return index;
+}
+
+int main() {
+    int i, j, pid, h;
+    
+    printf("Enter number of processes: ");
+    scanf("%d", &n);
+    
+    printf("Enter number of CPUs: ");
+    scanf("%d", &h);
+
+    // Collect process details
+    for (i = 0; i < n; i++) {
+        printf("Process %d\n", i + 1);
+        printf("*\n");
+        printf("Enter Arrival Time: ");
+        scanf("%d", &ready_list[i].at);
+        printf("Enter Service Time: ");
+        scanf("%d", &ready_list[i].st);
+        ready_list[i].status = 0;
+    }
+
+    int cur_time[h]; // Current time for each CPU
+    for (j = 0; j < h; j++) {
+        cur_time[j] = 0;
+    }
+
+    i = 0;
+    while (i < n) {
+        for (j = 0; j < h && i < n; j++) {
+            pid = dispatcher(cur_time[j]);
+            while (pid == -1) {
+                cur_time[j]++;
+                pid = dispatcher(cur_time[j]);
+            }
+            if (pid != -1) {
+                ready_list[pid].ft = cur_time[j] + ready_list[pid].st;
+                ready_list[pid].status = 1;
+                ready_list[pid].cpu = j + 1;
+                cur_time[j] += ready_list[pid].st;
+                i++;
+            }
+        }
+    }
+
+    // Display process details and metrics
+    printf("Process\tArrival Time\tBurst Time\tFinish Time\tCPU\tTT\tWT\n");
+    printf("\t\t*\t\t\t*\t*\n");
+    
+    for (i = 0; i < n; i++) {
+        int tt = ready_list[i].ft - ready_list[i].at; // Turnaround Time
+        int wt = tt - ready_list[i].st;              // Waiting Time
+        printf("%d\t%d\t\t%d\t\t%d\t\t%d\t%d\t%d\n", 
+               i + 1, ready_list[i].at, ready_list[i].st, 
+               ready_list[i].ft, ready_list[i].cpu, tt, wt);
+    }
+
+    return 0;
+}
