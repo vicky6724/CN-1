@@ -1,531 +1,202 @@
+CN LAB
+CODE-1:
+SERVER:
 import java.io.*;
 import java.net.*;
 import javax.swing.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 
-public class ChatServer extends JFrame {
-    private ObjectOutputStream output;
-    private ObjectInputStream input;
-    private Socket connection;
-    private ServerSocket server;
-    private JTextArea chatArea;
-    private JTextField inputField;
-    private JButton sendButton;
+public class SimpleServerGUI {
+    private static ServerSocket serverSocket;
+    private static Socket clientSocket;
+    private static BufferedReader in;
+    private static PrintWriter out;
 
-    public ChatServer() {
-        // GUI setup
-        chatArea = new JTextArea();
-        inputField = new JTextField();
-        sendButton = new JButton("Send");
+    public static void main(String[] args) {
+        JFrame frame = new JFrame("Server");
+        JTextArea textArea = new JTextArea(10, 30);
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        JTextField textField = new JTextField(20);
+        JButton sendButton = new JButton("Send");
 
-        chatArea.setEditable(false);
-        add(new JScrollPane(chatArea), "Center");
-        add(inputField, "South");
-        add(sendButton, "East");
+        frame.setLayout(new java.awt.BorderLayout());
+        frame.add(scrollPane, java.awt.BorderLayout.CENTER);
+        JPanel panel = new JPanel();
+        panel.add(textField);
+        panel.add(sendButton);
+        frame.add(panel, java.awt.BorderLayout.SOUTH);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.pack();
+        frame.setVisible(true);
 
-        setTitle("Chat Server");
-        setSize(400, 300);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setVisible(true);
+        try {
+            serverSocket = new ServerSocket(12345);
+            textArea.append("Server started. Waiting for a client...\n");
+            clientSocket = serverSocket.accept();
+            textArea.append("Client connected.\n");
 
-        sendButton.addActionListener(e -> sendMessage(inputField.getText()));
-        inputField.addActionListener(e -> sendMessage(inputField.getText()));
+            in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            out = new PrintWriter(clientSocket.getOutputStream(), true);
+
+            sendButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    String message = textField.getText();
+                    out.println("Server: " + message);
+                    textArea.append("Server: " + message + "\n");
+                    textField.setText("");
+                }
+            });
+
+            String message;
+            while ((message = in.readLine()) != null) {
+                textArea.append(message + "\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (clientSocket != null) clientSocket.close();
+                if (serverSocket != null) serverSocket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
+CLIENT:
+import java.io.*;
+import java.net.*;
+import javax.swing.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+public class SimpleClientGUI {
+    private static Socket socket;
+    private static BufferedReader in;
+    private static PrintWriter out;
+
+    public static void main(String[] args) {
+        JFrame frame = new JFrame("Client");
+        JTextArea textArea = new JTextArea(10, 30);
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        JTextField textField = new JTextField(20);
+        JButton sendButton = new JButton("Send");
+
+        frame.setLayout(new java.awt.BorderLayout());
+        frame.add(scrollPane, java.awt.BorderLayout.CENTER);
+        JPanel panel = new JPanel();
+        panel.add(textField);
+        panel.add(sendButton);
+        frame.add(panel, java.awt.BorderLayout.SOUTH);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.pack();
+        frame.setVisible(true);
+
+        try {
+            socket = new Socket("localhost", 12345);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
+
+            sendButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    String message = textField.getText();
+                    out.println("Client: " + message);
+                    textArea.append("Client: " + message + "\n");
+                    textField.setText("");
+                }
+            });
+
+            String response;
+            while ((response = in.readLine()) != null) {
+                textArea.append(response + "\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (socket != null) socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
+
+CODE-2:
+SERVER:
+import java.io.*;
+import java.net.*;
+
+public class TCPServer {
+    public static void main(String[] args) {
+        try (ServerSocket ss = new ServerSocket(4567)) {
+            System.out.println("Server is running and waiting for clients...");
+            while (true) {
+                Socket s = ss.accept(); // Establishes connection and waits for the client
+                System.out.println("Client connected.");
+
+                // Handling client interaction
+                new ClientHandler(s).start();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+class ClientHandler extends Thread {
+    private Socket socket;
+
+    ClientHandler(Socket socket) {
+        this.socket = socket;
     }
 
-    public void startRunning() {
+    public void run() {
         try {
-            server = new ServerSocket(8888, 10z);
-            while (true) {
-                try {
-                    chatArea.append("Waiting for a connection...\n");
-                    connection = server.accept();
-                    chatArea.append("Connected to " + connection.getInetAddress().getHostName() + "\n");
+            DataInputStream dis = new DataInputStream(socket.getInputStream());
+            DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
 
-                    setupStreams();
-                    whileChatting();
-                } catch (EOFException eofException) {
-                    chatArea.append("Connection ended.\n");
-                } finally {
-                    closeConnection();
+            String command = dis.readUTF();
+            if (command.equalsIgnoreCase("upload")) {
+                String filename = dis.readUTF();
+                int len = dis.readInt();
+                byte[] data = new byte[len];
+                dis.readFully(data);
+
+                // Save encrypted data
+                try (FileOutputStream fos = new FileOutputStream(filename)) {
+                    fos.write(data);
+                    System.out.println("File uploaded: " + filename);
+                }
+            } else if (command.equalsIgnoreCase("download")) {
+                String filename = dis.readUTF();
+                File file = new File(filename);
+                if (file.exists()) {
+                    byte[] data = new byte[(int) file.length()];
+                    try (FileInputStream fis = new FileInputStream(file)) {
+                        fis.read(data);
+                    }
+
+                    dos.writeUTF("OK");
+                    dos.writeInt(data.length);
+                    dos.write(data);
+                } else {
+                    dos.writeUTF("ERROR: File not found");
                 }
             }
-        } catch (IOException ioException) {
-            ioException.printStackTrace();
+            socket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
-
-    private void setupStreams() throws IOException {
-        output = new ObjectOutputStream(connection.getOutputStream());
-        output.flush();
-        input = new ObjectInputStream(connection.getInputStream());
-    }
-
-    private void whileChatting() throws IOException {
-        String message = "You are connected!";
-        sendMessage(message);
-        inputField.setEditable(true);
-
-        do {
-            try {
-                message = (String) input.readObject();
-                chatArea.append("\n" + message);
-            } catch (ClassNotFoundException classNotFoundException) {
-                chatArea.append("\nUnknown data received.");
-            }
-        } while (!message.equals("CLIENT - END"));
-    }
-
-    private void sendMessage(String message) {
-        try {
-            chatArea.append("\nSERVER - " + message);
-            output.writeObject("SERVER - " + message);
-            output.flush();
-            inputField.setText("");
-        } catch (IOException ioException) {
-            chatArea.append("\nError: Unable to send message.");
-        }
-    }
-
-    private void closeConnection() {
-        try {
-            output.close();
-            input.close();
-            connection.close();
-        } catch (IOException ioException) {
-            ioException.printStackTrace();
-        }
-    }
-
-    public static void main(String[] args) {
-        ChatServer server = new ChatServer();
-        server.startRunning();
-    }
 }
 
-
-
-…………………………………………………………………………………………..........................................................................
-import java.io.*;
-import java.net.*;
-import javax.swing.*;
-
-public class ChatClient extends JFrame {
-    private ObjectOutputStream output;
-    private ObjectInputStream input;
-    private Socket connection;
-    private JTextArea chatArea;
-    private JTextField inputField;
-    private JButton sendButton;
-    private String serverIP;
-
-    public ChatClient(String host) {
-        serverIP = host;
-        chatArea = new JTextArea();
-        inputField = new JTextField();
-        sendButton = new JButton("Send");
-
-        chatArea.setEditable(false);
-        add(new JScrollPane(chatArea), "Center");
-        add(inputField, "South");
-        add(sendButton, "East");
-
-        setTitle("Chat Client");
-        setSize(400, 300);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setVisible(true);
-
-        sendButton.addActionListener(e -> sendMessage(inputField.getText()));
-        inputField.addActionListener(e -> sendMessage(inputField.getText()));
-    }
-
-    public void startRunning() {
-        try {
-            connection = new Socket(InetAddress.getByName(serverIP), 8888);
-            chatArea.append("Connected to: " + connection.getInetAddress().getHostName() + "\n");
-
-            setupStreams();
-            whileChatting();
-        } catch (IOException ioException) {
-            ioException.printStackTrace();
-        }
-    }
-
-    private void setupStreams() throws IOException {
-        output = new ObjectOutputStream(connection.getOutputStream());
-        output.flush();
-        input = new ObjectInputStream(connection.getInputStream());
-    }
-
-    private void whileChatting() throws IOException {
-        String message = "You are connected!";
-        sendMessage(message);
-        inputField.setEditable(true);
-
-        do {
-            try {
-                message = (String) input.readObject();
-                chatArea.append("\n" + message);
-            } catch (ClassNotFoundException classNotFoundException) {
-                chatArea.append("\nUnknown data received.");
-            }
-        } while (!message.equals("SERVER - END"));
-    }
-
-    private void sendMessage(String message) {
-        try {
-            chatArea.append("\nCLIENT - " + message);
-            output.writeObject("CLIENT - " + message);
-            output.flush();
-            inputField.setText("");
-        } catch (IOException ioException) {
-            chatArea.append("\nError: Unable to send message.");
-        }
-    }
-
-    private void closeConnection() {
-        try {
-            output.close();
-            input.close();
-            connection.close();
-        } catch (IOException ioException) {
-            ioException.printStackTrace();
-        }
-    }
-
-    public static void main(String[] args) {
-        ChatClient client = new ChatClient("192.168.56.1");
-        client.startRunning();
-    }
-}
-
-……………………………………………………………………………………………………………..................................................................................
-ns [new Simulator]
-
-#Create a trace file, this file is for logging purpose
-set tracefile [open wired.tr w]
-$ns trace-all $tracefile
-
-#Create a animation infomration or NAM file creationset
-namfile [open wired.nam w]
-$ns namtrace-all $namfile
-
-#Create nodes
-set n0 [$ns node]
-set n1 [$ns node]
-set n2 [$ns node]
-
-set n3 [$ns node]
-set n4 [$ns node]
-set n5 [$ns node]
-
-#Creation of link between nodes with DropTail Queue
-#Droptail means Dropping the tail.
-$ns duplex-link $n0 $n2 5Mb 2ms DropTail
-$ns duplex-link $n1 $n2 10Mb 5ms DropTail
-$ns duplex-link $n2 $n3 4Mb 3ms DropTail
-$ns duplex-link $n3 $n4 100Mb 2ms DropTail
-$ns duplex-link $n3 $n5 15Mb 4ms DropTail
-
-#Creation of Agents
-#Node 0 to Node 4
-set udp [new Agent/UDP]
-set null [new Agent/Null]
-$ns attach-agent $n0 $udp
-$ns attach-agent $n4 $null
-$ns connect $udp $null
-
-#Creation of TCP Agent
-set tcp [new Agent/TCP]
-set sink [new Agent/TCPSink]
-$ns attach-agent $n1 $tcp
-$ns attach-agent $n5 $sink
-$ns connect $tcp $sink
-
-#Creation of Application CBR, FTP
-#CBR - Constant Bit Rate (Example mp3 files that have a CBR or 192kbps, 320kbps, etc.)
-#FTP - File Transfer Protocol (Ex: To download a file from a network)
-
-
-set cbr [new Application/Traffic/CBR]
-$cbr attach-agent $udp
-
-set ftp [new Application/FTP]
-$ftp attach-agent $tcp
-
-#Start the traffic
-$ns at 1.0 "$cbr start"
-$ns at 2.0 "$ftp start"
-
-$ns at 10.0 "finish"
-
-#The following procedure will be called at 10.0 seconds
-proc finish {} {
-global ns tracefile namfile
-$ns flush-trace
-close $tracefile
-close $namfile
-exit 0
-}
-
-puts "Simulation is starting..."
-$ns run
-
-BEGIN{
-send=0;
-received=0;
-dropped=0;
-start=1.0;
-stop=3.0;
-}
-{
-if($1=="/+/")
-{
-send++;
-}
- 
-if($5=="tcp")
-{
-if($1=="r")
-{
-received++;
-}
-}
- 
-if($1=="d"){
-dropped++;
-}
-}  
-END{
-if(send=="0" && received=="0")
-{
-print "empty trace file\t"
-}
-print "Number of Packets Received  " received
-print "Throughput =" (received*8)/(start-stop) "bits per second"
-print "Number of Packets Dropped = " dropped
-}
-…………………………………………………………………………………………………………….......................................................................................................................
-set val(chan) Channel/WirelessChannel ;#Channel Type
-set val(prop) Propagation/TwoRayGround ;# radio-propagation model
-set val(netif) Phy/WirelessPhy ;# network interface type WAVELAN DSSS
-2.4GHz
-set val(mac) Mac/802_11 ;# MAC type
-set val(ifq) Queue/DropTail/PriQueue ;# interface queue type
-set val(ll) LL ;# link layer type
-set val(ant) Antenna/OmniAntenna ;# antenna model
-set val(ifqlen) 50 ;# max packet in ifq
-set val(nn) 6 ;# number of mobilenodes
-set val(rp) AODV ;# routing protocol
-set val(x) 500 ;# in metresset
-val(y) 500 ;# in metres
-#Adhoc OnDemand Distance Vector
-
-
-#Creation of Simulator
-set ns [new Simulator]
-
-#Creation of Trace and namefile
-set tracefile [open wireless.tr w]
-$ns trace-all $tracefile
-
-#Creation of Network Animation file
-set namfile [open wireless.nam w]
-$ns namtrace-all-wireless $namfile $val(x) $val(y)
-
-#Create Topography
-set topo [new Topography]
-$topo load_flatgrid $val(x) $val(y)
-
-#GOD Creation - General Operations Director
-create-god $val(nn)
-
-set channel1 [new $val(chan)]
-set channel2 [new $val(chan)]
-set channel3 [new $val(chan)]
-
-#Configure the Node
-$ns node-config -adhocRouting $val(rp) \
--llType $val(ll) \
--macType $val(mac) \
--ifqType $val(ifq) \
--ifqLen $val(ifqlen) \
--antType $val(ant) \
--propType $val(prop) \
-
--phyType $val(netif) \
--topoInstance $topo \
--agentTrace ON \
--macTrace ON \
--routerTrace ON \
--movementTrace ON \
--channel $channel1
-
-set n0 [$ns node]
-set n1 [$ns node]
-set n2 [$ns node]
-set n3 [$ns node]
-set n4 [$ns node]
-set n5 [$ns node]
-
-$n0 random-motion 0
-$n1 random-motion 0
-$n2 random-motion 0
-$n3 random-motion 0
-$n4 random-motion 0
-$n5 random-motion 0
-
-$ns initial_node_pos $n0 20
-$ns initial_node_pos $n1 20
-$ns initial_node_pos $n2 20
-$ns initial_node_pos $n3 20
-$ns initial_node_pos $n4 20
-$ns initial_node_pos $n5 50
-
-#Initial coordinates of the nodes
-
-
-
-$n0 set X_ 10.0
-$n0 set Y_ 20.0
-$n0 set Z_ 0.0
-
-$n1 set X_ 210.0
-$n1 set Y_ 230.0
-$n1 set Z_ 0.0
-
-$n2 set X_ 100.0
-$n2 set Y_ 200.0
-$n2 set Z_ 0.0
-
-$n3 set X_ 150.0
-$n3 set Y_ 230.0
-$n3 set Z_ 0.0
-
-$n4 set X_ 430.0
-$n4 set Y_ 320.0
-$n4 set Z_ 0.0
-
-$n5 set X_ 270.0
-$n5 set Y_ 120.0
-$n5 set Z_ 0.0
-#Dont mention any values above than 500 because in this example, we use X and Y as
-500,500
-
-#Mobility of the nodes
-#At what Time? Which node? Where to? at What Speed?
-$ns at 1.0 "$n1 setdest 490.0 340.0 25.0"
-$ns at 1.0 "$n4 setdest 300.0 130.0 5.0"
-$ns at 1.0 "$n5 setdest 190.0 440.0 15.0"
-
-
-
-#The nodes can move any number of times at any location during the simulation (runtime)
-$ns at 20.0 "$n5 setdest 100.0 200.0 30.0"
-
-#Creation of agents
-set tcp [new Agent/TCP]
-set sink [new Agent/TCPSink]
-$ns attach-agent $n0 $tcp
-$ns attach-agent $n5 $sink
-$ns connect $tcp $sink
-set ftp [new Application/FTP]
-$ftp attach-agent $tcp
-$ns at 1.0 "$ftp start"
-
-set udp [new Agent/UDP]
-set null [new Agent/Null]
-$ns attach-agent $n2 $udp
-$ns attach-agent $n3 $null
-$ns connect $udp $null
-set cbr [new Application/Traffic/CBR]
-$cbr attach-agent $udp
-$ns at 1.0 "$cbr start"
-
-$ns at 30.0 "finish"
-
-proc finish {} {
-global ns tracefile namfile
-$ns flush-trace
-close $tracefile
-close $namfile
-exit 0
-
-1
-
-}
-puts "Starting Simulation"
-$ns run
-...............................................................................................
-
-import java.net.*;
-import java.rmi.*;
-
-public class MyClient
-{
-	public static void main(String[] arg)
-	{
-		try 	
-		{
-		String sName = "rmi://"+arg[0]+"/RMServer";
-		
-		MyServerIntf asif = (MyServerIntf)Naming.lookup(sName);  // requesting remote objects on 							            // the server
-			
-		double d1=2000,d2=500;
-
-		System.out.println("Addition: "+asif.add(d1,d2));
-
-		}
-		catch(Exception e)
-		{
-			System.out.println("Exception: "+e);
-		}
-	}
-}
-..........................................
-import java.net.*;
-import java.rmi.*;
-
-public class MyServer
-{
-	public static void main(String[] arg)
-	{
-		try 	
-		{
-			MyServerImpl asi = new MyServerImpl();
-			Naming.rebind("RMServer",asi);	//remote object associate with name 
-			System.out.println("\nServer Started...");
-		}
-		catch(Exception e)
-		{
-			System.out.println("Exception: "+e);
-		}
-	}
-}
-..................................................................
-//definition of MyServerIntf
-import java.rmi.*;
-import java.rmi.server.*;
-
-// UnicastRemoteObject supports for point-to-point active object references (invocations, parameters, and // results) using TCP streams.
-
-public class MyServerImpl extends UnicastRemoteObject implements MyServerIntf
-{
-	MyServerImpl() throws RemoteException
-	{}
-
-	public double add(double a, double b) throws RemoteException
-	{
-		return(a+b);
-	}	
-}
-...........................................................................
-//function prototype
-import java.rmi.*;
-
-public interface MyServerIntf extends Remote		//remote interface
-{	int i=0;
-	double add(double a, double b) throws RemoteException;
-}
-................................................................................
+CLIENT:
 import java.awt.*;
 import java.awt.event.*;
 import javax.swing.*;
@@ -644,70 +315,218 @@ public class TCPClient {
         }
     }
 }
-.................................................................................................
-import java.io.*;
+
+
+CODE-3:
+INTF:
+//function prototype
+import java.rmi.*;
+
+public interface MyServerIntf extends Remote		//remote interface
+{	int i=0;
+	double add(double a, double b) throws RemoteException;
+}
+
+IMPL:
+import java.rmi.*;
+import java.rmi.server.*;
+
+// UnicastRemoteObject supports for point-to-point active object references (invocations, parameters, and // results) using TCP streams.
+
+public class MyServerImpl extends UnicastRemoteObject implements MyServerIntf
+{
+	MyServerImpl() throws RemoteException
+	{}
+
+	public double add(double a, double b) throws RemoteException
+	{
+		return(a+b);
+	}	
+}
+
+SERVER:
 import java.net.*;
+import java.rmi.*;
 
-public class TCPServer {
-    public static void main(String[] args) {
-        try (ServerSocket ss = new ServerSocket(4567)) {
-            System.out.println("Server is running and waiting for clients...");
-            while (true) {
-                Socket s = ss.accept(); // Establishes connection and waits for the client
-                System.out.println("Client connected.");
-
-                // Handling client interaction
-                new ClientHandler(s).start();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+public class MyServer
+{
+	public static void main(String[] arg)
+	{
+		try 	
+		{
+			MyServerImpl asi = new MyServerImpl();
+			Naming.rebind("RMServer",asi);  
+			System.out.println("\nServer Started...");
+		}
+		catch(Exception e)
+		{
+			System.out.println("Exception: "+e);
+		}
+	}
 }
 
-class ClientHandler extends Thread {
-    private Socket socket;
+CLIENT:
+import java.net.*;
+import java.rmi.*;
 
-    ClientHandler(Socket socket) {
-        this.socket = socket;
-    }
+public class MyClient
+{
+	public static void main(String[] arg)
+	{
+		try 	
+		{
+		String sName = "rmi://"+arg[0]+"/RMServer";
+		
+		MyServerIntf asif = (MyServerIntf)Naming.lookup(sName);  // requesting remote objects on 							            // the server
+			
+		double d1=2000,d2=500;
 
-    public void run() {
-        try {
-            DataInputStream dis = new DataInputStream(socket.getInputStream());
-            DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+		System.out.println("Addition: "+asif.add(d1,d2));
 
-            String command = dis.readUTF();
-            if (command.equalsIgnoreCase("upload")) {
-                String filename = dis.readUTF();
-                int len = dis.readInt();
-                byte[] data = new byte[len];
-                dis.readFully(data);
-
-                // Save encrypted data
-                try (FileOutputStream fos = new FileOutputStream(filename)) {
-                    fos.write(data);
-                    System.out.println("File uploaded: " + filename);
-                }
-            } else if (command.equalsIgnoreCase("download")) {
-                String filename = dis.readUTF();
-                File file = new File(filename);
-                if (file.exists()) {
-                    byte[] data = new byte[(int) file.length()];
-                    try (FileInputStream fis = new FileInputStream(file)) {
-                        fis.read(data);
-                    }
-
-                    dos.writeUTF("OK");
-                    dos.writeInt(data.length);
-                    dos.write(data);
-                } else {
-                    dos.writeUTF("ERROR: File not found");
-                }
-            }
-            socket.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+		}
+		catch(Exception e)
+		{
+			System.out.println("Exception: "+e);
+		}
+	}
 }
+
+
+CODE-4:
+NS2(WIRED):
+set ns [new Simulator]
+
+$ns color 0 blue
+$ns color 1 black
+
+
+set tr [open droptail-queue-out.tr w]
+$ns trace-all $tr
+
+set ftr [open droptail-queue-out.nam w]
+$ns namtrace-all $ftr
+
+set n0 [$ns node]
+set n1 [$ns node]
+set n2 [$ns node]
+set n3 [$ns node]
+set n4 [$ns node]
+set n5 [$ns node]
+
+$ns duplex-link $n0 $n2 5Mb 2ms DropTail
+$ns duplex-link $n1 $n2 10Mb 5ms DropTail
+$ns duplex-link $n2 $n3 4Mb 3ms DropTail
+$ns duplex-link $n3 $n4 100Mb 2ms DropTail
+$ns duplex-link $n3 $n5 15Mb 4ms DropTail
+
+set udp [new Agent/UDP]
+
+$udp set fid_ 1
+set null [new Agent/Null]
+
+$ns attach-agent $n0 $udp 
+$ns attach-agent $n4 $null
+$ns connect $udp $null
+
+set tcp [new Agent/TCP]
+$tcp set fid_ 0
+set sink [new Agent/TCPSink]
+$ns attach-agent $n1 $tcp
+$ns attach-agent $n5 $sink
+$ns connect $tcp $sink
+$ns connect $tcp $sink
+
+set cbr [new Application/Traffic/CBR]
+$cbr attach-agent $udp
+$cbr set interval 0.020
+
+set ftp [new Application/FTP]
+$ftp attach-agent $tcp
+
+$ftp set interval 0.020
+proc finish {} {
+           global ns tr ftr
+           $ns flush-trace
+           close $tr
+           close $ftr
+           exec nam droptail-queue-out.nam &
+           exec gawk -f analysis.awk droptail-queue-out.tr &
+           exit
+}
+
+$ns at 0.1 "$cbr start"
+$ns at 2.0 "$cbr stop"
+$ns at 0.1 "$ftp start"
+$ns at 2.0 "$ftp stop"
+$ns at 2.1 "finish"
+
+$ns run
+
+
+THROUGHPUT FILE:
+BEGIN {
+  rec= 0
+  drp=0
+  tot=0
+  rat=0.0
+  sum=0
+  sum1=0
+  throughput=0.0
+  throughput1=0.0
+}
+
+{
+  
+  if($1== "r" && $4== 4)
+    {
+    
+      rec++
+    }
+    
+    
+   if($1== "d" && $4 ==4 )
+     
+     {
+       drp++
+       
+     }
+     
+     
+     
+     if($2<1.00 && $4==4)
+      {
+     
+          sum=sum+$6
+ 
+      }
+ 
+    if($2<1.00 && $4==5)
+      {
+     
+          sum1=sum1+$6
+ 
+      }
+ 
+ }
+ 
+ 
+  
+END {
+   
+      tot = rec + drp
+      rat = (rec/tot) *100
+      throughput= (sum*8)/1000000
+      throughput1=(sum1*8)/1000000
+       printf(" \n Packets received %d ", rec)
+       printf(" \n Packets dropped %d ", drp)
+       printf("\n Packets delivery ratio %f",rat)
+        printf("\n Throughput for udp is %f",throughput)
+         
+        printf("\n Throughput for tcp is %f",throughput1)
+     }
+
+EXECUTION:
+~$ cd Desktop/
+ns wired-net.tcl
+nam wired.nam
+awk -f sample.awk wired.tr	
